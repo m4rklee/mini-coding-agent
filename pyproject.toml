@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mca"
+version = "0.1.0"
+description = "Small local coding agent (mini coding agent) for Ollama, OpenAI-compatible, Anthropic-compatible, and DeepSeek models"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.13",
+    "mcp>=1.27.1",
+    "prompt-toolkit>=3.0.0",
+    "python-multipart>=0.0.20",
+    "pyyaml>=6.0.3",
+    "uvicorn>=0.34.0",
+]
+
+[project.scripts]
+mca = "mca.cli:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3.5",
+  "ruff>=0.4.4",
+]
+
+[tool.setuptools]
+packages = ["mca"]

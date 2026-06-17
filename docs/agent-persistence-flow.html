@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mca Agent 落盘流程</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2933;
+      --muted: #5f6b76;
+      --line: #2f3a42;
+      --grid: #e8edf0;
+      --panel: #ffffff;
+      --teal: #67cdd0;
+      --teal-dark: #208b91;
+      --session: #e7f6f7;
+      --run: #fff3d8;
+      --checkpoint: #eee9ff;
+      --trace: #e9f0ff;
+      --memory: #e9f8ed;
+      --durable: #ffe8ef;
+      --shadow: 0 10px 28px rgba(31, 41, 51, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 22px 22px;
+    }
+
+    .page {
+      max-width: 1420px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    header {
+      margin-bottom: 22px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 900px;
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(420px, 0.95fr) minmax(560px, 1.35fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    .board,
+    .details {
+      background: rgba(255, 255, 255, 0.88);
+      border: 1px solid #dce3e7;
+      box-shadow: var(--shadow);
+    }
+
+    .board {
+      position: sticky;
+      top: 18px;
+      padding: 22px 20px 28px;
+      min-height: 760px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 20px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      border: 1px solid #d7e0e5;
+      background: #fff;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+    }
+
+    .dot.session { background: var(--session); }
+    .dot.run { background: var(--run); }
+    .dot.checkpoint { background: var(--checkpoint); }
+    .dot.trace { background: var(--trace); }
+    .dot.memory { background: var(--memory); }
+
+    .flow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .node,
+    .decision {
+      width: 170px;
+      min-height: 66px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 10px 12px;
+      border: 2px solid var(--line);
+      background: #fff;
+      font-size: 17px;
+      line-height: 1.35;
+    }
+
+    .node.start {
+      border-radius: 22px;
+      min-height: 58px;
+    }
+
+    .node.persist {
+      background: var(--teal);
+      font-weight: 650;
+    }
+
+    .decision {
+      width: 138px;
+      height: 138px;
+      min-height: 138px;
+      transform: rotate(45deg);
+      background: #fff;
+    }
+
+    .decision span {
+      transform: rotate(-45deg);
+      width: 120px;
+      display: block;
+    }
+
+    .arrow {
+      width: 2px;
+      height: 28px;
+      background: var(--line);
+      position: relative;
+    }
+
+    .arrow::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -1px;
+      width: 0;
+      height: 0;
+      transform: translateX(-50%);
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-top: 10px solid var(--line);
+    }
+
+    .branch-row {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 138px 1fr;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .branch-line {
+      height: 2px;
+      background: var(--line);
+      position: relative;
+    }
+
+    .branch-line.right::after {
+      content: "";
+      position: absolute;
+      right: -1px;
+      top: 50%;
+      transform: translateY(-50%);
+      border-top: 7px solid transparent;
+      border-bottom: 7px solid transparent;
+      border-left: 10px solid var(--line);
+    }
+
+    .mini-paths {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+      width: 100%;
+      align-items: start;
+    }
+
+    .path {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .path-label {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.3;
+      min-height: 34px;
+      text-align: center;
+    }
+
+    .node.small {
+      width: 138px;
+      min-height: 58px;
+      font-size: 16px;
+    }
+
+    .loop-note {
+      width: 100%;
+      margin-top: 2px;
+      padding: 12px;
+      border-left: 3px solid var(--teal-dark);
+      background: #f6fbfb;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .details {
+      padding: 20px;
+    }
+
+    .section {
+      margin-bottom: 18px;
+      border: 1px solid #dfe7ec;
+      background: var(--panel);
+    }
+
+    .section h2 {
+      margin: 0;
+      padding: 14px 16px;
+      font-size: 18px;
+      border-bottom: 1px solid #dfe7ec;
+      background: #f8fbfc;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .card {
+      border: 1px solid #dce4e8;
+      background: #fff;
+      padding: 12px;
+      min-height: 132px;
+    }
+
+    .card.session { background: var(--session); }
+    .card.run { background: var(--run); }
+    .card.checkpoint { background: var(--checkpoint); }
+    .card.trace { background: var(--trace); }
+    .card.memory { background: var(--memory); }
+    .card.durable { background: var(--durable); }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      line-height: 1.35;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+      color: #34414b;
+      line-height: 1.55;
+      font-size: 13px;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      padding: 1px 4px;
+      word-break: break-word;
+    }
+
+    .wide {
+      grid-column: 1 / -1;
+    }
+
+    .timeline {
+      padding: 14px 16px 18px;
+    }
+
+    .timeline ol {
+      margin: 0;
+      padding-left: 22px;
+      line-height: 1.7;
+      color: #33424c;
+    }
+
+    .callout {
+      margin: 14px 16px 16px;
+      padding: 12px 14px;
+      background: #f7fafb;
+      border-left: 4px solid var(--teal-dark);
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 14px;
+    }
+
+    @media (max-width: 1020px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .board {
+        position: static;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .page {
+        padding: 16px;
+      }
+
+      .cards,
+      .mini-paths {
+        grid-template-columns: 1fr;
+      }
+
+      .branch-row {
+        grid-template-columns: 1fr;
+        justify-items: center;
+      }
+
+      .branch-line {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <h1>mca Agent 落盘流程</h1>
+      <p class="subtitle">
+        基于当前 agent 主循环整理：左侧保留你的流程图主干，青色节点表示会发生关键落盘或状态更新；右侧展开每个阶段写入哪些字段、写到哪个文件。
+      </p>
+    </header>
+
+    <div class="layout">
+      <section class="board" aria-label="agent 主流程图">
+        <div class="legend">
+          <span class="chip"><span class="dot session"></span>session</span>
+          <span class="chip"><span class="dot run"></span>run 工件</span>
+          <span class="chip"><span class="dot checkpoint"></span>checkpoint</span>
+          <span class="chip"><span class="dot trace"></span>trace</span>
+          <span class="chip"><span class="dot memory"></span>memory</span>
+        </div>
+
+        <div class="flow">
+          <div class="node start">agent启动</div>
+          <div class="arrow"></div>
+          <div class="node persist">初始化设置</div>
+          <div class="arrow"></div>
+          <div class="node">用户发送消息</div>
+          <div class="arrow"></div>
+          <div class="node persist">任务建构</div>
+          <div class="arrow"></div>
+
+          <div class="branch-row">
+            <div></div>
+            <div class="decision"><span>调用未超限?</span></div>
+            <div class="branch-line right"></div>
+          </div>
+
+          <div class="node persist">上下文建构<br>组装prompt</div>
+          <div class="arrow"></div>
+          <div class="node">调用模型</div>
+          <div class="arrow"></div>
+          <div class="node persist">模型输出解析</div>
+          <div class="arrow"></div>
+
+          <div class="mini-paths">
+            <div class="path">
+              <div class="path-label">kind = tool</div>
+              <div class="decision"><span>是否需要调用工具</span></div>
+              <div class="arrow"></div>
+              <div class="node persist small">调用工具</div>
+            </div>
+            <div class="path">
+              <div class="path-label">kind = retry</div>
+              <div class="decision"><span>是否需要重试</span></div>
+              <div class="arrow"></div>
+              <div class="node small">记录重试提示</div>
+            </div>
+            <div class="path">
+              <div class="path-label">kind = final</div>
+              <div class="decision"><span>是否是最终答案</span></div>
+              <div class="arrow"></div>
+              <div class="node persist small">结果整理</div>
+            </div>
+          </div>
+
+          <div class="loop-note">
+            tool 和 retry 会回到“调用未超限?”重新组 prompt；final 或超限会进入结果整理并返回。每一次模型调用都会保存一个完整 prompt 文件。
+          </div>
+        </div>
+      </section>
+
+      <section class="details" aria-label="落盘字段明细">
+        <section class="section">
+          <h2>初始化设置</h2>
+          <div class="cards">
+            <article class="card session">
+              <h3>创建或加载 session</h3>
+              <ul>
+                <li><code>id</code>, <code>created_at</code>, <code>workspace_root</code></li>
+                <li><code>history</code>, <code>memory</code>, <code>checkpoints</code></li>
+                <li><code>runtime_identity</code>, <code>resume_state</code></li>
+                <li>文件：<code>.mca/sessions/&lt;session_id&gt;.json</code></li>
+              </ul>
+            </article>
+            <article class="card memory">
+              <h3>规范化 memory</h3>
+              <ul>
+                <li><code>working.task_summary</code>, <code>working.recent_files</code></li>
+                <li><code>episodic_notes</code>, <code>file_summaries</code></li>
+                <li><code>task</code>, <code>files</code>, <code>notes</code> 为兼容镜像</li>
+                <li><code>next_note_index</code>, <code>durable_topics</code></li>
+              </ul>
+            </article>
+            <article class="card checkpoint">
+              <h3>评估恢复状态</h3>
+              <ul>
+                <li>读取 <code>checkpoints.current_id</code></li>
+                <li>比较 <code>schema_version</code>, <code>key_files.freshness</code></li>
+                <li>比较 <code>runtime_identity</code></li>
+                <li>更新 <code>resume_state.status</code>, <code>stale_paths</code></li>
+              </ul>
+            </article>
+            <article class="card session">
+              <h3>初始化落盘时间</h3>
+              <ul>
+                <li>新建或恢复 <code>mca</code> 实例时保存 session</li>
+                <li>恢复 session 时也会重算 <code>resume_state</code></li>
+                <li>过期文件摘要可能在此时被清理</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>用户发送消息 / 任务建构</h2>
+          <div class="cards">
+            <article class="card memory">
+              <h3>更新当前任务摘要</h3>
+              <ul>
+                <li><code>memory.working.task_summary = user_message</code></li>
+                <li><code>memory.task</code> 同步为兼容字段</li>
+              </ul>
+            </article>
+            <article class="card session">
+              <h3>追加用户历史</h3>
+              <ul>
+                <li><code>history[]</code> 新增 <code>{ role: "user", content, created_at }</code></li>
+                <li><code>record()</code> 立即保存 session</li>
+              </ul>
+            </article>
+            <article class="card run">
+              <h3>创建 TaskState / run 目录</h3>
+              <ul>
+                <li><code>run_id</code>, <code>task_id</code>, <code>user_request</code></li>
+                <li><code>status = running</code>, <code>attempts = 0</code>, <code>tool_steps = 0</code></li>
+                <li>文件：<code>.mca/runs/&lt;run_id&gt;/task_state.json</code></li>
+              </ul>
+            </article>
+            <article class="card trace">
+              <h3>trace: run_started</h3>
+              <ul>
+                <li><code>event = run_started</code></li>
+                <li><code>task_id</code>, <code>user_request</code>, <code>created_at</code></li>
+                <li>文件：<code>.mca/runs/&lt;run_id&gt;/trace.jsonl</code></li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>每轮循环：上下文建构 / 调用模型</h2>
+          <div class="cards">
+            <article class="card run">
+              <h3>更新 task_state</h3>
+              <ul>
+                <li>每轮开始：<code>attempts += 1</code></li>
+                <li>写入 <code>task_state.json</code></li>
+                <li>超限条件：<code>tool_steps &lt; max_steps</code> 且 <code>attempts &lt; max_attempts</code></li>
+              </ul>
+            </article>
+            <article class="card session">
+              <h3>构建 prompt 时可能更新 session</h3>
+              <ul>
+                <li>刷新 <code>workspace_fingerprint</code>, <code>prefix_hash</code></li>
+                <li>重算 <code>resume_state</code></li>
+                <li>清理过期 <code>file_summaries</code></li>
+                <li>更新 <code>runtime_identity</code></li>
+              </ul>
+            </article>
+            <article class="card run">
+              <h3>保存完整 prompt</h3>
+              <ul>
+                <li>每次模型调用前保存一次</li>
+                <li>文件：<code>prompts/attempt_001.txt</code></li>
+                <li>第二轮为 <code>attempt_002.txt</code>，依次递增</li>
+              </ul>
+            </article>
+            <article class="card trace">
+              <h3>trace: prompt/model</h3>
+              <ul>
+                <li><code>prompt_built</code>: <code>prompt_metadata</code>, <code>prompt_path</code></li>
+                <li><code>model_requested</code>: <code>attempts</code>, <code>tool_steps</code>, <code>prompt_cache_key</code></li>
+                <li><code>model_parsed</code>: <code>kind</code>, <code>completion_metadata</code></li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>工具调用分支</h2>
+          <div class="cards">
+            <article class="card run">
+              <h3>更新 TaskState</h3>
+              <ul>
+                <li><code>tool_steps += 1</code></li>
+                <li><code>last_tool = name</code></li>
+                <li>写入 <code>task_state.json</code></li>
+              </ul>
+            </article>
+            <article class="card memory">
+              <h3>更新 memory</h3>
+              <ul>
+                <li><code>read_file</code>: recent file + file summary + episodic note</li>
+                <li><code>write_file/patch_file</code>: recent file + 清理旧 file summary</li>
+                <li>失败/拒绝/partial success 可能追加 process note</li>
+              </ul>
+            </article>
+            <article class="card session">
+              <h3>追加工具历史</h3>
+              <ul>
+                <li><code>history[]</code> 新增 <code>{ role: "tool", name, args, content, created_at }</code></li>
+                <li>工具成功、失败、拒绝都会作为文本结果写入 history</li>
+              </ul>
+            </article>
+            <article class="card trace">
+              <h3>trace: tool_executed</h3>
+              <ul>
+                <li><code>name</code>, <code>args</code>, <code>result</code>, <code>duration_ms</code></li>
+                <li><code>tool_status</code>, <code>tool_error_code</code>, <code>risk_level</code></li>
+                <li><code>affected_paths</code>, <code>workspace_changed</code>, <code>diff_summary</code></li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>Checkpoint 创建</h2>
+          <div class="cards">
+            <article class="card checkpoint wide">
+              <h3>写入 session.checkpoints</h3>
+              <ul>
+                <li>触发时机：<code>tool_executed</code>, <code>run_finished</code>, <code>step_limit_reached</code>, <code>retry_limit_reached</code>, <code>freshness_mismatch</code>, <code>workspace_mismatch</code>, <code>context_reduction</code></li>
+                <li>字段：<code>checkpoint_id</code>, <code>parent_checkpoint_id</code>, <code>schema_version</code>, <code>created_at</code></li>
+                <li>任务现场：<code>current_goal</code>, <code>completed</code>, <code>excluded</code>, <code>current_blocker</code>, <code>next_step</code></li>
+                <li>文件现场：<code>key_files</code>, <code>freshness</code></li>
+                <li>运行身份：<code>runtime_identity</code></li>
+                <li>同时更新：<code>checkpoints.current_id</code>, <code>task_state.checkpoint_id</code></li>
+              </ul>
+            </article>
+            <article class="card trace">
+              <h3>trace: checkpoint_created</h3>
+              <ul>
+                <li><code>checkpoint_id</code></li>
+                <li><code>trigger</code></li>
+                <li><code>created_at</code></li>
+              </ul>
+            </article>
+            <article class="card session">
+              <h3>落盘位置</h3>
+              <ul>
+                <li>checkpoint 本体保存在 session 文件里</li>
+                <li>不是单独的 run 文件</li>
+                <li>run 里只通过 trace/report/task_state 引用 checkpoint id</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>retry / final / 超限结果整理</h2>
+          <div class="cards">
+            <article class="card session">
+              <h3>retry 分支</h3>
+              <ul>
+                <li><code>history[]</code> 追加 assistant runtime notice</li>
+                <li>保存 session</li>
+                <li>写 <code>task_state.json</code></li>
+                <li>不创建 checkpoint，回到下一轮</li>
+              </ul>
+            </article>
+            <article class="card run">
+              <h3>final 成功整理</h3>
+              <ul>
+                <li><code>history[]</code> 追加 assistant final</li>
+                <li><code>status = completed</code></li>
+                <li><code>stop_reason = final_answer_returned</code></li>
+                <li><code>final_answer = final</code></li>
+              </ul>
+            </article>
+            <article class="card run">
+              <h3>超限停止整理</h3>
+              <ul>
+                <li>模型请求超限：<code>retry_limit_reached</code></li>
+                <li>工具步数超限：<code>step_limit_reached</code></li>
+                <li><code>status = stopped</code></li>
+                <li><code>final_answer</code> 为停止说明</li>
+              </ul>
+            </article>
+            <article class="card durable">
+              <h3>长期记忆</h3>
+              <ul>
+                <li>只有用户有“记住/保存/记录”等意图时触发</li>
+                <li>写入 <code>.mca/memory/MEMORY.md</code></li>
+                <li>写入 <code>.mca/memory/topics/*.md</code></li>
+                <li>report 记录 promotions/rejections/superseded</li>
+              </ul>
+            </article>
+            <article class="card trace">
+              <h3>trace: run_finished</h3>
+              <ul>
+                <li><code>status</code></li>
+                <li><code>stop_reason</code></li>
+                <li><code>final_answer</code></li>
+                <li><code>run_duration_ms</code></li>
+              </ul>
+            </article>
+            <article class="card run">
+              <h3>report.json</h3>
+              <ul>
+                <li><code>run_id</code>, <code>task_id</code>, <code>status</code>, <code>stop_reason</code></li>
+                <li><code>tool_steps</code>, <code>attempts</code>, <code>checkpoint_id</code></li>
+                <li><code>task_state</code>, <code>prompt_metadata</code>, <code>redacted_env</code></li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>一眼看懂：三条落盘线</h2>
+          <div class="timeline">
+            <ol>
+              <li><strong>session 线：</strong>保存长期会话状态，包含 history、memory、checkpoints、runtime_identity、resume_state。</li>
+              <li><strong>run 线：</strong>保存单次 ask 的审计工件，包含 task_state、trace、prompt、report。</li>
+              <li><strong>durable memory 线：</strong>只有明确长期记忆意图时才写入 `.mca/memory`。</li>
+            </ol>
+          </div>
+          <div class="callout">
+            最容易混淆的是 checkpoint：它不是 run 目录里的单独文件，而是 session 内部的恢复点。run 目录记录“这次怎么跑”，session 记录“会话现在是什么状态”。
+          </div>
+        </section>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
