@@ -1,21 +1,20 @@
 # Mini Coding Agent
 
-> A small local coding agent with CLI, persistent runs, MCP examples, and a lightweight web console.
+> 一个面向本地开发的编码智能体。
 
-Mini Coding Agent (`mca`) 是一个面向本地开发和 Agent 实验的小型编码智能体。它支持命令行交互、会话持久化、上下文管理、任务状态记录、评测脚本和 MCP 示例服务，适合用来验证 coding agent 的工具调用、记忆、评测和安全边界。
+Mini Coding Agent 是一个面向本地开发的小型编码智能体。它支持命令行交互、会话持久化、上下文管理、任务状态记录、Skills 和 MCP 服务等。
 
-## Highlights
+## 项目功能
 
-- **Local-first coding agent**: 通过 CLI 启动，适合在本地工作区内进行编码任务实验。
-- **Multi-provider model support**: 支持 Ollama、OpenAI-compatible、Anthropic-compatible 和 DeepSeek 风格模型配置。
-- **Persistent run store**: 保存每次运行的任务状态、上下文和执行记录。
-- **MCP examples**: 内置 math、notes 等 MCP server 示例，便于测试工具协议。
-- **Evaluation utilities**: 提供 benchmark、metrics、large-scale experiment scripts。
-- **Web console**: `web/` 提供 React/Vite 控制台，用于观察和操作 agent runs。
+- **终端和Web两种启动方式**: 支持 CLI 启动和 Web 启动。
+- **多模型支持**: 支持 Ollama、OpenAI、Anthropic 和 DeepSeek 风格模型配置。
+- **多层结构化记忆管理**：
+- **会话保存和恢复**: 支持任务运行状态、会话上下文保存和恢复。
+- **MCP、Skills支持**: 支持导入MCP和Skills。
 
-## Demo
+## 项目演示
 
-CLI 帮助信息：
+### CLI 启动：
 
 ![mca help](assets/screenshots/mca-help.png)
 
@@ -23,11 +22,11 @@ CLI 帮助信息：
 
 ![mca start](assets/screenshots/mca-start.png)
 
-REPL 内置命令与会话路径：
+### Web 管理：：
 
 ![mca repl](assets/screenshots/mca-repl.png)
 
-## How It Works
+## 项目流程
 
 ```text
 User / CLI / Web Console
@@ -46,26 +45,12 @@ LLM provider
 
 Agent 运行时读取用户任务和工作区上下文，按配置调用模型，并将任务状态、上下文窗口和工具结果写入本地 run store。MCP 示例服务用于验证外部工具协议，不默认执行高风险系统操作。
 
-## Features
+## 技术栈
 
-| Module | Description |
-|---|---|
-| **CLI Runtime** | `mca` 命令行入口，支持交互式 agent 会话。 |
-| **Context Manager** | 管理当前任务需要的文件、上下文和裁剪策略。 |
-| **Memory** | 保存会话和任务相关信息，便于后续恢复与评估。 |
-| **Task State** | 记录任务步骤、状态和运行历史。 |
-| **Metrics & Evaluator** | 提供 coding task benchmark 与结果统计。 |
-| **MCP Examples** | `examples/` 中包含可运行的 MCP server 示例。 |
-| **Web Console** | React/Vite 前端用于查看和操作 runs。 |
+- **后端**: Python 3.10+, FastAPI, prompt-toolkit, PyYAML
+- **前端**: React, Vite, TypeScript, lucide-react
 
-## Tech Stack
-
-- **Core**: Python 3.10+, FastAPI, prompt-toolkit, PyYAML
-- **Agent Tools**: MCP Python SDK, local workspace utilities
-- **Frontend**: React, Vite, TypeScript, lucide-react
-- **Testing**: pytest, ruff
-
-## Quick Start
+## 快速开始
 
 ```bash
 git clone https://github.com/m4rklee/mini-coding-agent.git
@@ -94,7 +79,7 @@ mca
 python -m mca
 ```
 
-## Web Console
+## 网页控制
 
 ```bash
 cd web
@@ -102,49 +87,12 @@ npm install
 npm run dev
 ```
 
-## Usage
-
-运行 MCP 示例：
-
-```bash
-python examples/mcp_math_server.py
-python examples/mcp_notes_server.py
-```
-
-运行测试：
-
-```bash
-pytest -q
-```
-
-运行实验脚本：
-
-```bash
-python scripts/run_provider_experiments.py
-python scripts/run_large_scale_experiments.py
-```
-
-## Project Structure
+## 项目结构
 
 ```text
-mca/                    # CLI, runtime, memory, tools, metrics, evaluator
-examples/               # MCP server examples
-benchmarks/             # Coding task benchmark data
-scripts/                # Experiment and metric collection scripts
-tests/                  # Unit and safety tests
-web/                    # React/Vite web console
-docs/                   # Flow diagrams and supporting docs
+mca/                    # 核心代码
+examples/               # MCP样例
+benchmarks/             # Benchmark测试数据
+web/                    # 网页前端
+docs/                   # 相关文档
 ```
-
-## Safety & Limitations
-
-- 这是本地 coding agent 实验项目，不建议直接授予生产环境写权限。
-- MCP 示例用于协议验证，不代表完整权限隔离系统。
-- 不同模型 provider 的行为差异较大，建议用 benchmark 和 safety tests 持续验证。
-
-## Roadmap
-
-- Add richer tool permission policies.
-- Improve web console run inspection.
-- Add more reproducible coding benchmarks.
-- Expand model-provider comparison reports.
