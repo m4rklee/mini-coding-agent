@@ -587,7 +587,8 @@ def _build_bottom_toolbar(agent):
         meta = getattr(agent, "last_prompt_metadata", None) or {}
         if not meta:
             mode = getattr(agent, "mode", "ReAct")
-            return HTML(f"<style fg='ansigray'>ctx: --/-- | waiting for first turn... | mode={mode}</style>")
+            budget = getattr(agent.context_manager, "total_budget", 12000)
+            return HTML(f"<style fg='ansigreen'>ctx: 0/{budget} (0%) | ready | mode={mode}</style>")
 
         prompt_chars = meta.get("prompt_chars", 0)
         budget = meta.get("prompt_budget_chars", 12000)
