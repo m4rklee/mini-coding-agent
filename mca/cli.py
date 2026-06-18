@@ -375,6 +375,11 @@ def _handle_slash_command(user_input, agent):
 
 # 创建欢迎文本
 def build_welcome(agent, model, host):
+    workspace = getattr(agent.workspace, "repo_root", "-")
+    branch = getattr(agent.workspace, "branch", "-")
+    approval = getattr(agent, "approval_policy", "-")
+    session = agent.session.get("id", "-")
+
     return "\n".join(
         [
             "+==================================================================================+",
@@ -382,6 +387,12 @@ def build_welcome(agent, model, host):
             "|                                local coding agent                                |",
             "|                            calm shell, ready for work                            |",
             "+----------------------------------------------------------------------------------+",
+            "|                                                                                  |",
+            f"| WORKSPACE  {workspace:<64} |",
+            f"| MODEL      {model:<30} BRANCH    {branch:<30} |",
+            f"| APPROVAL   {approval:<30} SESSION   {session:<30} |",
+            "|                                                                                  |",
+            "+==================================================================================+",
         ]
     )
 
