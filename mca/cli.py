@@ -36,12 +36,6 @@ DEFAULT_SECRET_ENV_NAMES = (
     "GH_PAT",
 )
 # 模型固定的启动显示文本
-WELCOME_ART = (
-    "        /\\___/\\\\",
-    "       (  o o  )",
-    "       /   ^   \\\\",
-    "      /|       |\\\\",
-)
 WELCOME_NAME = "mca"
 WELCOME_SUBTITLE = "local coding agent"
 WELCOME_STATUS = "calm shell, ready for work"
@@ -384,11 +378,7 @@ def build_welcome(agent, model, host):
     return "\n".join(
         [
             "+==================================================================================+",
-            "|                                         /\\___/\\\\                                 |",
-            "|                                        (  o o  )                                 |",
-            "|                                       /   ^   \\\\                                 |",
-            "|                                      /|       |\\\\                                |",
-            "|                                       mca                                        |",
+            "|                           Mini Coding Agent                                      |",
             "|                                local coding agent                                |",
             "|                            calm shell, ready for work                            |",
             "+----------------------------------------------------------------------------------+",
